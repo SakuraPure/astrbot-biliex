@@ -1,0 +1,62 @@
+{
+  "push_enabled": {
+    "description": "启用定时推送",
+    "type": "bool",
+    "hint": "开启后，后台定时检测已绑定账号的新投稿视频并自动推送到对应会话。",
+    "default": true
+  },
+  "push_interval": {
+    "description": "推送检测间隔（秒）",
+    "type": "int",
+    "hint": "两次新视频检测之间的间隔时间，单位秒。建议不小于 600，避免触发风控。",
+    "default": 1800
+  },
+  "fetch_count": {
+    "description": "单次获取视频数",
+    "type": "int",
+    "hint": "每次检测账号主页时拉取的最新视频条数，用于判断是否有新投稿。",
+    "default": 10
+  },
+  "pushed_history_size": {
+    "description": "已推送记录上限",
+    "type": "int",
+    "hint": "每个绑定记住的「已推送 bvid」数量上限，超出按时间淘汰，用于去重。",
+    "default": 50
+  },
+  "summary_max_videos": {
+    "description": "AI 总结视频数上限",
+    "type": "int",
+    "hint": "执行 /bili summary 时最多参与总结的视频条数。",
+    "default": 20
+  },
+  "summary_language": {
+    "description": "AI 总结语言",
+    "type": "string",
+    "hint": "AI 总结输出的语言，例如：中文、English。",
+    "default": "中文"
+  },
+  "include_cover": {
+    "description": "推送含封面图",
+    "type": "bool",
+    "hint": "推送视频时是否附带封面图（需要平台支持图片消息，aiocqhttp 支持）。",
+    "default": true
+  },
+  "delete_credential_msg": {
+    "description": "撤回 Cookie 消息",
+    "type": "bool",
+    "hint": "绑定时捕获到 Cookie 后，自动撤回用户发送的含 Cookie 消息以防泄露（仅 aiocqhttp 生效）。",
+    "default": true
+  },
+  "request_timeout": {
+    "description": "B站接口超时（秒）",
+    "type": "int",
+    "hint": "调用 bilibili 接口的单次超时时间，单位秒。",
+    "default": 15
+  },
+  "proxy": {
+    "description": "HTTP 代理",
+    "type": "string",
+    "hint": "可选。访问 bilibili 接口使用的 HTTP/HTTPS 代理地址，留空则不使用代理。",
+    "default": ""
+  }
+}

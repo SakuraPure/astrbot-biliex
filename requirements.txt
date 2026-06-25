@@ -1,0 +1,2 @@
+# 哔哩哔哩 API 封装（全异步，需异步 http 后端；AstrBot 已自带 httpx/aiohttp，通常无需额外安装）
+bilibili-api-python

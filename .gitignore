@@ -1,0 +1,14 @@
+# 本地工具配置（不属于插件代码）
+.claude/
+.env
+.mcp.json
+
+# Python 编译缓存
+__pycache__/
+*.pyc
+*.pyo
+
+# 编辑器 / IDE
+.idea/
+.vscode/
+.DS_Store

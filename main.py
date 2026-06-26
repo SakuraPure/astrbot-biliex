@@ -27,7 +27,7 @@ from astrbot.core.utils.session_waiter import SessionController, session_waiter
 from biliex.bili.client import BilibiliClient
 from biliex.config import PluginConfig
 from biliex.errors import BiliExError
-from biliex.messaging import build_video_chain, video_components
+from biliex.messaging import video_components
 from biliex.models import Binding
 from biliex.scheduler import PushScheduler
 from biliex.security import recall_message
@@ -304,12 +304,16 @@ class BiliExPlugin(Star):
             yield event.plain_result(f"❌ 发生错误：{e}")
 
     # ==================== LLM 工具（AI 对话可直接调用） ====================
-    # 通过 @filter.llm_tool 暴露给 AstrBot 的 LLM，用户用自然语言即可触发，
-    # 例如「给我推送一个b站首页视频」「我首页推荐了什么」「总结一下我的首页推荐」。
+    # 通过 @filter.llm_tool 暴露给 AstrBot 的 LLM，用户用自然语言即可触发。
+    #
+    # 重要：工具内 yield 的是【纯字符串】而非 event.plain_result(...)。
+    # 在 AstrBot 中，llm_tool yield 字符串 → 作为工具结果回传给模型（不发给用户）；
+    # yield MessageEventResult → 直接发给用户。这里要让模型用自己的话组织回复，
+    # 所以一律 yield 纯字符串，由模型完成对话输出，工具不主动发送任何消息。
 
     @filter.llm_tool(name="bili_push_random_video")
     async def tool_push_random_video(self, event: AstrMessageEvent) -> Any:
-        '''向用户推送一个哔哩哔哩首页推荐视频。从当前绑定账号的首页推荐流中随机抽取一条，以视频卡片（标题+链接+封面）形式发送给用户。
+        '''从当前绑定账号的哔哩哔哩首页推荐流中随机抽取一条视频，返回其标题与链接。由你（AI）用自然语言把这个视频推荐给用户，在回复中包含标题和链接。
 
         当用户想要看一个B站视频、随机推送B站视频、推送首页推荐视频、推一个视频时调用此工具。
         '''
@@ -318,48 +322,46 @@ class BiliExPlugin(Star):
             videos = await self._video_service.fetch_latest(b)
             picked = self._video_service.pick_random(videos)
             if picked is None:
-                yield event.plain_result(f"账号 {b.uname} 的首页推荐暂无可推送的视频。")
+                yield f"账号 {b.uname} 的首页推荐暂无视频。请把这一情况告诉用户。"
                 return
-            # 主动把视频卡片发给用户
-            await self.context.send_message(
-                event.unified_msg_origin,
-                build_video_chain(picked, self._config.include_cover),
-            )
-            yield event.plain_result(
-                f"已向用户推送B站首页推荐视频：《{picked.title}》，链接：{picked.url}。请用一句话告知用户已推送。"
+            yield (
+                f"已从账号 {b.uname} 的首页推荐中随机挑选一条视频：\n"
+                f"标题：{picked.title}\n"
+                f"链接：{picked.url}\n"
+                f"请用自然语言向用户推荐这个视频，回复中包含标题和链接。"
             )
         except BiliExError as e:
-            yield event.plain_result(f"推送失败：{e}")
+            yield f"操作失败：{e}。请把失败原因告诉用户。"
         except Exception as e:  # noqa: BLE001
             logger.error(f"biliex tool_push_random_video: {e}")
-            yield event.plain_result(f"推送失败：{e}")
+            yield f"操作失败：{e}。请把失败原因告诉用户。"
 
     @filter.llm_tool(name="bili_get_home_recommendations")
     async def tool_get_home_recommendations(self, event: AstrMessageEvent) -> Any:
-        '''获取当前绑定账号的哔哩哔哩首页推荐视频列表（标题+链接）。用于查看首页推荐了什么视频，或对其做归纳总结。
+        '''获取当前绑定账号的哔哩哔哩首页推荐视频列表（标题+链接），返回给由你（AI）。你可以据此回答用户「首页推荐了什么」，或对其进行归纳总结。
 
         当用户问「我首页推荐了什么」「B站给我推荐了什么视频」「总结一下我的首页推荐」「我首页有哪些视频」时调用此工具。
         '''
         try:
             b = await self._active_binding(event)
             text = await self._push.show_videos(b, self._config.fetch_count)
-            yield event.plain_result(text)
+            yield text
         except BiliExError as e:
-            yield event.plain_result(f"获取失败：{e}")
+            yield f"获取失败：{e}。请把失败原因告诉用户。"
         except Exception as e:  # noqa: BLE001
             logger.error(f"biliex tool_get_home_recommendations: {e}")
-            yield event.plain_result(f"获取失败：{e}")
+            yield f"获取失败：{e}。请把失败原因告诉用户。"
 
     @filter.llm_tool(name="bili_list_bound_accounts")
     async def tool_list_bound_accounts(self, event: AstrMessageEvent) -> Any:
-        '''列出当前用户已绑定的所有哔哩哔哩账号（含 uid、名称、是否为当前账号、推送开关）。
+        '''列出当前用户已绑定的所有哔哩哔哩账号（含 uid、名称、是否为当前账号、推送开关），返回给由你（AI）。
 
         当用户问「我绑定了哪些B站账号」「有几个账号」「当前是哪个账号」时调用此工具。
         '''
         try:
             bindings = await self._sub.list_bindings(self._owner_key(event))
             if not bindings:
-                yield event.plain_result("当前用户尚未绑定任何哔哩哔哩账号。")
+                yield "当前用户尚未绑定任何哔哩哔哩账号。请引导用户使用 /bili bind 绑定账号。"
                 return
             active = await self._sub.get_active(self._owner_key(event))
             lines = ["已绑定账号："]
@@ -367,12 +369,12 @@ class BiliExPlugin(Star):
                 mark = "（当前）" if b.binding_id == active.binding_id else ""
                 push = "推送开" if b.push_enabled else "推送关"
                 lines.append(f"- {b.uname}（uid: {b.uid}）{mark} [{push}]")
-            yield event.plain_result("\n".join(lines))
+            yield "\n".join(lines)
         except BiliExError as e:
-            yield event.plain_result(str(e))
+            yield f"查询失败：{e}。请把失败原因告诉用户。"
         except Exception as e:  # noqa: BLE001
             logger.error(f"biliex tool_list_bound_accounts: {e}")
-            yield event.plain_result(f"查询失败：{e}")
+            yield f"查询失败：{e}。请把失败原因告诉用户。"
 
     @filter.llm_tool(name="bili_switch_account")
     async def tool_switch_account(self, event: AstrMessageEvent, token: str) -> Any:
@@ -383,9 +385,9 @@ class BiliExPlugin(Star):
         '''
         try:
             b = await self._sub.switch(self._owner_key(event), token)
-            yield event.plain_result(f"已切换到账号：{b.uname}（uid: {b.uid}）。")
+            yield f"已切换到账号：{b.uname}（uid: {b.uid}）。请把切换结果告诉用户。"
         except BiliExError as e:
-            yield event.plain_result(str(e))
+            yield f"切换失败：{e}。请把失败原因告诉用户。"
         except Exception as e:  # noqa: BLE001
             logger.error(f"biliex tool_switch_account: {e}")
-            yield event.plain_result(f"切换失败：{e}")
+            yield f"切换失败：{e}。请把失败原因告诉用户。"
